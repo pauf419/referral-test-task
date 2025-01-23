@@ -18,10 +18,7 @@ export class UsersService {
     private readonly actionRepository: Repository<Action>,
   ) {}
 
-  async createUserWithBotAuth(
-    telegramId: number,
-    referrerId: number | undefined,
-  ) {
+  async createUser(telegramId: number, referrerId?: number) {
     const userExists = await this.userRepository.findOneBy({
       telegramId,
     });
@@ -44,26 +41,6 @@ export class UsersService {
     });
   }
 
-  async createUserWithTelegramAuth(telegramId: number) {
-    const userExists = await this.userRepository.findOne({
-      where: {
-        telegramId,
-      },
-      relations: ['actions'],
-    });
-
-    if (userExists)
-      throw new BadRequestException(
-        'User with the same telegram id already exists',
-      );
-
-    const user = this.userRepository.create({
-      telegramId,
-    });
-
-    return await this.userRepository.save(user);
-  }
-
   async getUserXp(telegramId: number) {
     const userExists = await this.userRepository.findOneBy({
       telegramId,
@@ -72,28 +49,6 @@ export class UsersService {
       throw new NotFoundException(
         'User with the same telegram id was not found',
       );
-
-    const referrals = await this.userRepository.find({
-      where: { referrerId: telegramId },
-    });
-
-    const validReferrals = [];
-    for (const referral of referrals) {
-      const actionCount = await this.actionRepository.count({
-        where: { user: { id: referral.id } },
-      });
-      if (actionCount >= 3) {
-        validReferrals.push(referral);
-      }
-    }
-
-    const levels = [1000, 500, 250];
-    let xp = 0;
-
-    for (let i = 0; i < validReferrals.length && i < levels.length; i++) {
-      xp += levels[i];
-    }
-
-    return xp;
+    return userExists.xp;
   }
 }

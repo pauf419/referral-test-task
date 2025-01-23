@@ -7,9 +7,20 @@ import { Action } from '../../../../libs/shared/storage/action.entity';
 import { NotFoundException } from '@nestjs/common';
 
 describe('ActionsService', () => {
-  let service: ActionsService;
+  let actionsService: ActionsService;
   let userRepository: Repository<User>;
   let actionRepository: Repository<Action>;
+
+  const mockUserRepository = {
+    findOneBy: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const mockActionRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    countBy: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -17,59 +28,105 @@ describe('ActionsService', () => {
         ActionsService,
         {
           provide: getRepositoryToken(User),
-          useValue: {
-            findOneBy: jest.fn(),
-          },
+          useValue: mockUserRepository,
         },
         {
           provide: getRepositoryToken(Action),
-          useValue: {
-            create: jest.fn(),
-            save: jest.fn(),
-          },
+          useValue: mockActionRepository,
         },
       ],
     }).compile();
 
-    service = module.get<ActionsService>(ActionsService);
+    actionsService = module.get<ActionsService>(ActionsService);
     userRepository = module.get<Repository<User>>(getRepositoryToken(User));
     actionRepository = module.get<Repository<Action>>(
       getRepositoryToken(Action),
     );
   });
 
-  it('should create and save an action if user exists', async () => {
-    const mockUser = { id: 1, telegramId: 12345 } as User;
-    const mockAction = { id: 1, action: 'testAction' } as Action;
-
-    jest.spyOn(userRepository, 'findOneBy').mockResolvedValue(mockUser);
-    jest.spyOn(actionRepository, 'create').mockReturnValue(mockAction);
-    jest.spyOn(actionRepository, 'save').mockResolvedValue(mockAction);
-
-    const result = await service.registerAction(12345, 'testAction');
-
-    expect(userRepository.findOneBy).toHaveBeenCalledWith({
-      telegramId: 12345,
-    });
-    expect(actionRepository.create).toHaveBeenCalledWith({
-      user: mockUser,
-      action: 'testAction',
-      timestamp: expect.any(Number),
-    });
-    expect(actionRepository.save).toHaveBeenCalledWith(mockAction);
-    expect(result).toBe(mockAction);
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('should throw NotFoundException if user does not exist', async () => {
-    jest.spyOn(userRepository, 'findOneBy').mockResolvedValue(null);
+  it('should be defined', () => {
+    expect(actionsService).toBeDefined();
+  });
 
-    await expect(service.registerAction(12345, 'testAction')).rejects.toThrow(
-      new NotFoundException('User with the same telegram id was not found'),
-    );
-    expect(userRepository.findOneBy).toHaveBeenCalledWith({
-      telegramId: 12345,
+  it('should throw NotFoundException if user is not found', async () => {
+    mockUserRepository.findOneBy.mockResolvedValue(null);
+
+    await expect(
+      actionsService.registerAction(123456, 'TestAction'),
+    ).rejects.toThrow(NotFoundException);
+
+    expect(mockUserRepository.findOneBy).toHaveBeenCalledWith({
+      telegramId: 123456,
     });
-    expect(actionRepository.create).not.toHaveBeenCalled();
-    expect(actionRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('should create and save an action for an existing user', async () => {
+    const user = {
+      id: 1,
+      telegramId: 123456,
+      referrerId: null,
+      xpAccrued: false,
+    };
+    const action = { id: 1, user, action: 'TestAction', timestamp: Date.now() };
+
+    mockUserRepository.findOneBy.mockResolvedValue(user);
+    mockActionRepository.create.mockReturnValue(action);
+    mockActionRepository.save.mockResolvedValue(action);
+
+    await actionsService.registerAction(123456, 'TestAction');
+
+    expect(mockActionRepository.create).toHaveBeenCalledWith({
+      user,
+      action: 'TestAction',
+      timestamp: expect.any(Number),
+    });
+
+    expect(mockActionRepository.save).toHaveBeenCalledWith(action);
+  });
+
+  it('should not process XP logic if user has already accrued XP or has no referrerId', async () => {
+    const user = {
+      id: 1,
+      telegramId: 123456,
+      xpAccrued: true,
+      referrerId: null,
+    };
+
+    mockUserRepository.findOneBy.mockResolvedValue(user);
+
+    await actionsService.registerAction(123456, 'TestAction');
+
+    expect(mockActionRepository.countBy).not.toHaveBeenCalled();
+  });
+
+  it('should process XP logic for valid users and referrers', async () => {
+    const user = { id: 1, telegramId: 123456, xpAccrued: false, referrerId: 2 };
+    const referrer = { id: 2, telegramId: 654321, xp: 0, referrerId: null };
+
+    mockUserRepository.findOneBy
+      .mockResolvedValueOnce(user)
+      .mockResolvedValueOnce(referrer);
+
+    mockActionRepository.create.mockReturnValue({
+      user,
+      action: 'TestAction',
+      timestamp: Date.now(),
+    });
+    mockActionRepository.save.mockResolvedValue({});
+    mockActionRepository.countBy.mockResolvedValue(3);
+
+    await actionsService.registerAction(123456, 'TestAction');
+
+    expect(mockActionRepository.countBy).toHaveBeenCalledWith({
+      user: { id: user.id },
+    });
+
+    expect(mockUserRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({ xp: 1000 }),
+    );
   });
 });

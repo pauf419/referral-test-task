@@ -22,8 +22,9 @@ export class UsersController {
   @HttpCode(204)
   async createUserWithTelegramAuth(
     @AuthorizedUser() user: TelegramUserData,
+    @Body('referrerId') referrerId: number | undefined,
   ): Promise<void> {
-    await this.usersService.createUserWithTelegramAuth(user.id);
+    await this.usersService.createUser(user.id, referrerId);
   }
 
   @Post('/bot')
@@ -32,7 +33,7 @@ export class UsersController {
   async createUserWithBotAuth(
     @Body() createUserBotAuthDto: CreateUserBotAuthDto,
   ): Promise<void> {
-    await this.usersService.createUserWithBotAuth(
+    await this.usersService.createUser(
       createUserBotAuthDto.telegramId,
       createUserBotAuthDto.referrerId,
     );

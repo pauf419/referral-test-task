@@ -12,6 +12,12 @@ export class User {
   @Column({ nullable: true })
   referrerId: number;
 
+  @Column({ nullable: false, default: 0 })
+  xp: number;
+
+  @Column({ nullable: false, default: false })
+  xpAccrued: boolean;
+
   @OneToMany(() => Action, (action) => action.user)
   actions: Action[];
 }
