@@ -5,7 +5,5 @@ export class CreateUserBotAuthDto {
   @IsNotEmpty()
   telegramId;
 
-  @IsNumber()
-  @IsNotEmpty()
   referrerId;
 }
